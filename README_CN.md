@@ -49,7 +49,9 @@
 
 ### 主要 `config.plist` 设置
 - **SMBIOS 机型**: `MacPro7,1`
-- **启动参数**: `alcid=3 -crypt_force_avx`
+- **启动参数（安装及补丁前）**: `alcid=3 -crypt_force_avx -amd_no_dgpu_accel`
+  参数 `-amd_no_dgpu_accel` 在安装阶段和 OCLP 补丁完成前禁用显卡加速，防止因 AMD 驱动不完整而导致黑屏。
+  **打上 OCLP 补丁后，必须从 boot-args 中移除 `-amd_no_dgpu_accel`**，以开启硬件加速。
 - **内核怪癖 (Kernel Quirks)**: `AppleCpuPmCfgLock` = `true`, `AppleXcpmCfgLock` = `true`, `DisableIoMapper` = `true`, `PanicNoKextDump` = `true`, `PowerTimeoutKernelPanic` = `true`
 - **安全启动模型**: `Disabled`
 - **Vault**: `Optional`
@@ -72,13 +74,59 @@
 ## 安装步骤
 
 ### 1. 制作 macOS 安装 U 盘
-- 获取 macOS Sequoia 安装 App（可通过 `gibMacOS` 或 App Store 下载）。
-- 将 U 盘（16 GB 或更大）格式化为 `Mac OS 扩展（日志式）`，分区方案选择 GUID 分区图。
+
+#### 方案 A：使用 `macrecovery.py`
+此方法从 Apple 服务器下载最小的 macOS 恢复镜像，并制作一个引导 U 盘，在安装过程中将联网下载完整的 macOS。
+
+**准备条件：**
+- 系统已安装 Python 3
+- 一个 8 GB 或更大的 U 盘
+
+**步骤：**
+
+1. 从 [OpenCorePkg 官方发布页](https://github.com/acidanthera/OpenCorePkg/releases) 下载 OpenCorePkg。
+
+2. 解压 ZIP 文件，在 `Utilities/macrecovery/` 目录下打开终端。
+
+3. 运行以下命令下载 macOS Sequoia 恢复镜像：
+   ```bash
+   python3 macrecovery.py -b Mac-7BA5B2D9E42DDD94 -m 00000000000000000 download
+   ```
+   这会将 `BaseSystem.dmg` 和 `BaseSystem.chunklist` 下载到 `com.apple.recovery.boot` 文件夹中。
+
+4. 将 U 盘格式化为 **FAT32**（MBR 分区方案）。
+
+5. 在 U 盘根目录创建一个名为 `com.apple.recovery.boot` 的文件夹（名称必须完全一致）。
+
+6. 将 `BaseSystem.dmg` 和 `BaseSystem.chunklist` 复制到 `com.apple.recovery.boot` 中。
+
+7. （可选）为了让恢复条目在 OpenCore 引导菜单中显示友好的名称，在 `com.apple.recovery.boot` 中新建一个文本文件，写入如 `macOS Sequoia Recovery` 的标签，然后将文件重命名为 `.contentDetails`（无扩展名的隐藏文件）。
+
+8. 挂载 U 盘的 EFI 分区，将本 EFI 文件夹复制进去。
+
+**最终 U 盘结构：**
+```
+U 盘根目录
+├── EFI
+│   ├── BOOT
+│   └── OC
+└── com.apple.recovery.boot
+    ├── BaseSystem.dmg
+    ├── BaseSystem.chunklist
+    └── .contentDetails (可选)
+```
+
+**注意：** `com.apple.recovery.boot` 文件夹必须放在 U 盘根目录，与 `EFI` 文件夹同级，不可放入 EFI 文件夹内。
+
+#### 方案 B：使用完整 macOS 安装 App（仅限 macOS）
+如果你已在真实的 Mac 或可正常工作的黑苹果上：
+- 从 App Store 获取 macOS Sequoia 安装 App。
+- 将 U 盘格式化为 `Mac OS 扩展（日志式）`，分区方案选择 GUID 分区图。
 - 使用 `createinstallmedia` 命令：
   ```
   sudo /Applications/Install\ macOS\ Sequoia.app/Contents/Resources/createinstallmedia --volume /Volumes/USB
   ```
-- 挂载 U 盘的 EFI 分区，将**整个 EFI 文件夹**复制进去。
+- 挂载 EFI 分区，将本 EFI 文件夹复制进去。
 
 ### 2. 从 U 盘引导安装
 - 插入 U 盘，开机，按启动菜单键（MSI 主板通常为 F11），选择 UEFI USB 启动项。
@@ -87,15 +135,18 @@
 - 使用磁盘工具将目标硬盘抹掉为 APFS 格式，然后开始安装。
 - 系统会自动重启多次；**每次重启后都从 OpenCore 菜单选择 `Install macOS` 条目**（或新出现的 `macOS` 分区）。
 - 整个安装过程中，画面会因为没有显卡加速而显得缓慢、分辨率低，这是正常现象，因为 AMD 驱动此时尚未打上 AVX2 补丁。
+- 这是正常现象，因为此时我们特意使用了 `-amd_no_dgpu_accel` 参数以兼容安装环境。
 
 ### 3. 首次进入桌面与后续操作
 最终重启后会进入桌面。**暂时不要登录 iCloud**。由于显卡加速和 CPU 电源管理都未启用，系统会感觉卡顿。
 
 ### 4. 使用 OpenCore Legacy Patcher (OCLP)
+- 在 OCLP 开始打补丁前，请确认启动参数中仍然包含 `-amd_no_dgpu_accel`，否则补丁过程可能卡死或黑屏。
 - 下载最新版 [OpenCore Legacy Patcher](https://github.com/dortania/OpenCore-Legacy-Patcher)。
 - 打开 OCLP，点击 **Post Install Root Patch**。
 - OCLP 会检测到你的 AMD 显卡，并对相关驱动（如 `AMDRadeonX4000.kext`）打补丁，使其能在无 AVX2 的 CPU 上工作。
 - 按照提示完成补丁，然后**重启**。
+- 补丁完成后重启前，**务必从 config.plist 的 boot-args 中移除 `-amd_no_dgpu_accel`**，让显卡获得完整加速。
 - 重启后，显卡应已获得完整加速（Metal 显示“支持”）。
 
 ### 5. 确认 / 重新生成 CPU 电源管理

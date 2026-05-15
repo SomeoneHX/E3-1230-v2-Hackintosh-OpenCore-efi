@@ -49,7 +49,9 @@ The configuration uses the `MacPro7,1` SMBIOS for optimal AMD dGPU encode/decode
 
 ### Key `config.plist` Settings
 - **SMBIOS**: `MacPro7,1`
-- **Boot arguments**: `alcid=3 -crypt_force_avx`
+- **Boot arguments (install & pre-patch)**: `alcid=3 -crypt_force_avx -amd_no_dgpu_accel`
+  The `-amd_no_dgpu_accel` flag disables GPU acceleration during installation and before OCLP patches are applied, preventing a black screen caused by incomplete AMD drivers.
+  **After applying OCLP root patches, you must remove `-amd_no_dgpu_accel` from boot-args** to enable hardware acceleration.
 - **Kernel Quirks**: `AppleCpuPmCfgLock` = `true`, `AppleXcpmCfgLock` = `true`, `DisableIoMapper` = `true`, `PanicNoKextDump` = `true`, `PowerTimeoutKernelPanic` = `true`
 - **SecureBootModel**: `Disabled`
 - **Vault**: `Optional`
@@ -72,13 +74,59 @@ Before installing, set your motherboard BIOS as follows:
 ## Installation Steps
 
 ### 1. Create macOS Installer USB
-- Obtain the macOS Sequoia installer app (e.g., via `gibMacOS` or App Store).
-- Format a USB drive (16 GB or larger) as `Mac OS Extended (Journaled)` with GUID Partition Map.
+
+#### Option A: Using `macrecovery.py`
+This method downloads a minimal macOS recovery image from Apple's servers and creates a bootable USB that will download the full macOS during installation.
+
+**Prerequisites:**
+- Python 3 installed on your system
+- A USB drive (8 GB or larger)
+
+**Steps:**
+
+1. Download OpenCorePkg from the [official releases page](https://github.com/acidanthera/OpenCorePkg/releases).
+
+2. Extract the ZIP and open a terminal in the `Utilities/macrecovery/` directory.
+
+3. Run the following command to download the macOS Sequoia recovery image:
+   ```bash
+   python3 macrecovery.py -b Mac-7BA5B2D9E42DDD94 -m 00000000000000000 download
+   ```
+   This will download `BaseSystem.dmg` and `BaseSystem.chunklist` to a `com.apple.recovery.boot` folder.
+
+4. Format your USB drive as **FAT32** (MBR scheme).
+
+5. On the root of the USB drive, create a folder named `com.apple.recovery.boot` (exact name required).
+
+6. Copy `BaseSystem.dmg` and `BaseSystem.chunklist` into `com.apple.recovery.boot`.
+
+7. (Optional) To give the recovery entry a friendly name in the OpenCore picker, create a text file inside `com.apple.recovery.boot`, write a label such as `macOS Sequoia Recovery`, and rename the file to `.contentDetails` (a hidden file with no extension).
+
+8. Mount the EFI partition of the USB drive and copy this EFI folder to it.
+
+**Final USB structure:**
+```
+USB Root
+├── EFI
+│   ├── BOOT
+│   └── OC
+└── com.apple.recovery.boot
+    ├── BaseSystem.dmg
+    ├── BaseSystem.chunklist
+    └── .contentDetails (optional)
+```
+
+**Note:** The `com.apple.recovery.boot` folder must be at the root of the USB drive, parallel to the `EFI` folder, not inside it.
+
+#### Option B: Using a Full macOS Installer App (macOS only)
+If you are already on a real Mac or a working Hackintosh:
+- Obtain the macOS Sequoia installer app from the App Store.
+- Format the USB drive as `Mac OS Extended (Journaled)` with GUID Partition Map.
 - Use `createinstallmedia`:
   ```
   sudo /Applications/Install\ macOS\ Sequoia.app/Contents/Resources/createinstallmedia --volume /Volumes/USB
   ```
-- Mount the EFI partition of the USB drive and copy **this entire EFI folder** to it.
+- Mount the EFI partition and copy this EFI folder to it.
 
 ### 2. Boot from the USB Installer
 - Insert the USB, power on, and press the boot menu key (e.g., F11 on MSI boards) to select the UEFI USB entry.
@@ -87,15 +135,18 @@ Before installing, set your motherboard BIOS as follows:
 - Use Disk Utility to erase your target drive as APFS, then proceed with the installation.
 - The system will reboot several times; **each time choose the `Install macOS` entry** (or the newly appeared `macOS` partition) from the OpenCore menu.
 - During the entire installation the display will run without GPU acceleration (slow, low resolution). This is normal because the AMD drivers require AVX2 patches that are not yet applied.
+- This is expected because the `-amd_no_dgpu_accel` flag is temporarily used.
 
 ### 3. First Boot and Post‑Install
 After the final reboot, you will reach the desktop. **Do not sign into iCloud yet.** The system will feel sluggish because neither the GPU nor CPU power management is active.
 
 ### 4. Apply OpenCore Legacy Patcher (OCLP)
+- Ensure that the boot-args still contain `-amd_no_dgpu_accel` before OCLP begins patching, otherwise the process may hang or black screen.
 - Download the latest [OpenCore Legacy Patcher](https://github.com/dortania/OpenCore-Legacy-Patcher).
 - Launch OCLP and click **Post Install Root Patch**.
 - OCLP will detect your AMD GPU and patch the necessary drivers (e.g., `AMDRadeonX4000.kext`) to work without AVX2 instructions.
 - Follow the prompts to apply the patches, then **reboot**.
+- After rebooting from OCLP patches, remove `-amd_no_dgpu_accel` from boot-args, then reboot again to ensure full GPU acceleration.
 - After this reboot, the GPU should be fully accelerated (Metal supported).
 
 ### 5. Verify / Regenerate CPU Power Management
