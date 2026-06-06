@@ -49,10 +49,12 @@ The configuration uses the `MacPro7,1` SMBIOS for optimal AMD dGPU encode/decode
 
 ### Key `config.plist` Settings
 - **SMBIOS**: `MacPro7,1`
-- **Boot arguments (install & pre-patch)**: `alcid=3 -crypt_force_avx -amd_no_dgpu_accel`
+- **Default boot-args**: `alcid=3`
+  During installation and before OCLP root patching, you must temporarily add `-crypt_force_avx -amd_no_dgpu_accel` to boot-args (see installation steps below).
   The `-amd_no_dgpu_accel` flag disables GPU acceleration during installation and before OCLP patches are applied, preventing a black screen caused by incomplete AMD drivers.
   **After applying OCLP root patches, you must remove `-amd_no_dgpu_accel` from boot-args** to enable hardware acceleration.
-- **Kernel Quirks**: `AppleCpuPmCfgLock` = `true`, `AppleXcpmCfgLock` = `true`, `DisableIoMapper` = `true`, `PanicNoKextDump` = `true`, `PowerTimeoutKernelPanic` = `true`
+  The `-crypt_force_avx` flag may also be removed once the cryptex is properly installed and the system boots stably, though keeping it is harmless.
+- **Kernel Quirks**: `AppleCpuPmCfgLock` = `true`, `AppleXcpmCfgLock` = `false`, `DisableIoMapper` = `true`, `DisableLinkeditJettison` = `true`, `PanicNoKextDump` = `true`, `PowerTimeoutKernelPanic` = `true`, `ProvideCurrentCpuInfo` = `false`, `XhciPortLimit` = `true`
 - **SecureBootModel**: `Disabled`
 - **Vault**: `Optional`
 
@@ -131,22 +133,22 @@ If you are already on a real Mac or a working Hackintosh:
 ### 2. Boot from the USB Installer
 - Insert the USB, power on, and press the boot menu key (e.g., F11 on MSI boards) to select the UEFI USB entry.
 - At the OpenCore picker, select `Install macOS Sequoia`.
-- The installer will boot with `-crypt_force_avx` (already in boot-args) to work on the AVX2‑lacking CPU.
+- **Important:** Before the installer loads, you need `-crypt_force_avx -amd_no_dgpu_accel` in boot-args. Mount the USB's EFI partition and edit `config.plist` — set boot-args to `alcid=3 -crypt_force_avx -amd_no_dgpu_accel` before booting from the USB.
+- The installer will boot with those flags to work on the AVX2‑lacking CPU and prevent black screen.
 - Use Disk Utility to erase your target drive as APFS, then proceed with the installation.
 - The system will reboot several times; **each time choose the `Install macOS` entry** (or the newly appeared `macOS` partition) from the OpenCore menu.
 - During the entire installation the display will run without GPU acceleration (slow, low resolution). This is normal because the AMD drivers require AVX2 patches that are not yet applied.
-- This is expected because the `-amd_no_dgpu_accel` flag is temporarily used.
 
 ### 3. First Boot and Post‑Install
 After the final reboot, you will reach the desktop. **Do not sign into iCloud yet.** The system will feel sluggish because neither the GPU nor CPU power management is active.
 
 ### 4. Apply OpenCore Legacy Patcher (OCLP)
-- Ensure that the boot-args still contain `-amd_no_dgpu_accel` before OCLP begins patching, otherwise the process may hang or black screen.
+- Before running OCLP, temporarily add `-amd_no_dgpu_accel` to boot-args (alongside `-crypt_force_avx` if not already present), i.e. set boot-args to `alcid=3 -crypt_force_avx -amd_no_dgpu_accel`. Otherwise the patching process may hang or black screen.
 - Download the latest [OpenCore Legacy Patcher](https://github.com/dortania/OpenCore-Legacy-Patcher).
 - Launch OCLP and click **Post Install Root Patch**.
 - OCLP will detect your AMD GPU and patch the necessary drivers (e.g., `AMDRadeonX4000.kext`) to work without AVX2 instructions.
 - Follow the prompts to apply the patches, then **reboot**.
-- After rebooting from OCLP patches, remove `-amd_no_dgpu_accel` from boot-args, then reboot again to ensure full GPU acceleration.
+- After rebooting from OCLP patches, remove `-amd_no_dgpu_accel` from boot-args (restoring `alcid=3 -crypt_force_avx`), then reboot again to confirm full GPU acceleration.
 - After this reboot, the GPU should be fully accelerated (Metal supported).
 
 ### 5. Verify / Regenerate CPU Power Management

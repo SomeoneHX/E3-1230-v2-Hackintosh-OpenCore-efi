@@ -49,10 +49,12 @@
 
 ### 主要 `config.plist` 设置
 - **SMBIOS 机型**: `MacPro7,1`
-- **启动参数（安装及补丁前）**: `alcid=3 -crypt_force_avx -amd_no_dgpu_accel`
+- **默认启动参数**: `alcid=3`
+  在安装阶段和 OCLP 打补丁前，需要临时添加 `-crypt_force_avx -amd_no_dgpu_accel` 到 boot-args（详见下方安装步骤）。
   参数 `-amd_no_dgpu_accel` 在安装阶段和 OCLP 补丁完成前禁用显卡加速，防止因 AMD 驱动不完整而导致黑屏。
   **打上 OCLP 补丁后，必须从 boot-args 中移除 `-amd_no_dgpu_accel`**，以开启硬件加速。
-- **内核怪癖 (Kernel Quirks)**: `AppleCpuPmCfgLock` = `true`, `AppleXcpmCfgLock` = `true`, `DisableIoMapper` = `true`, `PanicNoKextDump` = `true`, `PowerTimeoutKernelPanic` = `true`
+  `-crypt_force_avx` 参数也可在 cryptex 正常安装且系统稳定后移除，保留也无害。
+- **内核怪癖 (Kernel Quirks)**: `AppleCpuPmCfgLock` = `true`, `AppleXcpmCfgLock` = `false`, `DisableIoMapper` = `true`, `DisableLinkeditJettison` = `true`, `PanicNoKextDump` = `true`, `PowerTimeoutKernelPanic` = `true`, `ProvideCurrentCpuInfo` = `false`, `XhciPortLimit` = `true`
 - **安全启动模型**: `Disabled`
 - **Vault**: `Optional`
 
@@ -131,23 +133,23 @@ U 盘根目录
 ### 2. 从 U 盘引导安装
 - 插入 U 盘，开机，按启动菜单键（MSI 主板通常为 F11），选择 UEFI USB 启动项。
 - 在 OpenCore 引导菜单中选择 `Install macOS Sequoia`。
-- 安装器会通过 `-crypt_force_avx` 参数（已写入 boot-args）在缺少 AVX2 的 CPU 上运行。
+- **重要：** 安装器启动前，boot-args 中需要包含 `-crypt_force_avx -amd_no_dgpu_accel`。请挂载 U 盘的 EFI 分区，编辑 `config.plist`，将 boot-args 临时改为 `alcid=3 -crypt_force_avx -amd_no_dgpu_accel`。
+- 安装器会通过这些参数在缺少 AVX2 的 CPU 上运行，并防止黑屏。
 - 使用磁盘工具将目标硬盘抹掉为 APFS 格式，然后开始安装。
 - 系统会自动重启多次；**每次重启后都从 OpenCore 菜单选择 `Install macOS` 条目**（或新出现的 `macOS` 分区）。
 - 整个安装过程中，画面会因为没有显卡加速而显得缓慢、分辨率低，这是正常现象，因为 AMD 驱动此时尚未打上 AVX2 补丁。
-- 这是正常现象，因为此时我们特意使用了 `-amd_no_dgpu_accel` 参数以兼容安装环境。
 
 ### 3. 首次进入桌面与后续操作
 最终重启后会进入桌面。**暂时不要登录 iCloud**。由于显卡加速和 CPU 电源管理都未启用，系统会感觉卡顿。
 
 ### 4. 使用 OpenCore Legacy Patcher (OCLP)
-- 在 OCLP 开始打补丁前，请确认启动参数中仍然包含 `-amd_no_dgpu_accel`，否则补丁过程可能卡死或黑屏。
+- 在运行 OCLP 前，请临时将 `-amd_no_dgpu_accel` 添加到 boot-args（如果 `-crypt_force_avx` 不在其中也一并添加），即设为 `alcid=3 -crypt_force_avx -amd_no_dgpu_accel`。否则补丁过程可能卡死或黑屏。
 - 下载最新版 [OpenCore Legacy Patcher](https://github.com/dortania/OpenCore-Legacy-Patcher)。
 - 打开 OCLP，点击 **Post Install Root Patch**。
 - OCLP 会检测到你的 AMD 显卡，并对相关驱动（如 `AMDRadeonX4000.kext`）打补丁，使其能在无 AVX2 的 CPU 上工作。
 - 按照提示完成补丁，然后**重启**。
-- 补丁完成后重启前，**务必从 config.plist 的 boot-args 中移除 `-amd_no_dgpu_accel`**，让显卡获得完整加速。
-- 重启后，显卡应已获得完整加速（Metal 显示“支持”）。
+- 重启后，从 boot-args 中移除 `-amd_no_dgpu_accel`（恢复为 `alcid=3 -crypt_force_avx`），然后再次重启以确认显卡完整加速。
+- 再次重启后，显卡应已获得完整加速（Metal 显示“支持”）。
 
 ### 5. 确认 / 重新生成 CPU 电源管理
 EFI 中已包含为 E3-1230 V2 定制的 `SSDT-PM.aml`（由 `ssdtPRGen.sh` 生成）。若你使用其他 CPU，请重新生成：
